@@ -10,7 +10,7 @@ use std::fmt;
 
 use capstone::prelude::*;
 
-use unicorn_engine::{RegisterARM, Unicorn};
+use unicorn_engine::{RegisterARM, RegisterARM64};
 use unicorn_engine::unicorn_const::{Arch, Mode, Permission, SECOND_SCALE};
 
 /// base address of the stack
@@ -137,8 +137,8 @@ impl <'a> Emulator<'a> {
                     Mode::LITTLE_ENDIAN
                 ).expect("failed to create emulator"),
             cs: Capstone::new()
-                .arm()
-                .mode(arch::arm::ArchMode::Thumb) 
+                .arm64()
+                .mode(arch::arm64::ArchMode::Arm) 
                 .detail(true)
                 .build()
                 .expect("failed to build capstone instance"),
@@ -161,11 +161,11 @@ impl <'a> Emulator<'a> {
         
         // set the stack pointer
         let stack_start = BASE_ADDR_STACK + SIZE_STACK as u64;
-        self.emu.reg_write(RegisterARM::R13, stack_start)
+        self.emu.reg_write(RegisterARM64::SP, stack_start)
             .expect("failed to set stack pointer");
         
         // set the frame pointer
-        self.emu.reg_write(RegisterARM::R11, stack_start)
+        self.emu.reg_write(RegisterARM64::FP, stack_start)
             .expect("failed to set stack pointer");
        
     }
@@ -204,6 +204,13 @@ impl <'a> Emulator<'a> {
 
         self.emu.mem_write(addr, code)
             .expect("writing memory failed");
+
+        let instrs = self.cs.disasm_all(code, addr)
+            .expect("can't disassemble code");
+
+        for instr in instrs.as_ref() {
+            println!("{}", instr)
+        }
 
         Ok(())
     }

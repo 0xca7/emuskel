@@ -216,7 +216,7 @@ impl fmt::Display for RegsArm64 {
             28, self.x28, self.fp, self.sp, self.pc
         )?;
 
-        writeln!(f, "pc = {:08x}", self.pc);
+        writeln!(f, "pc = {:08x}", self.pc)?;
 
         writeln!(f, "------------------------------------------------------------")
     }
@@ -246,14 +246,16 @@ pub fn hook_trace(emu: &mut Unicorn<()>, addr: u64, size: u32) {
 
     /* #ARCH */
     // change the arch here to print registers for a different arch
-    let regs = get_regs(ArmArch::Arm32, emu);
+    let regs = get_regs(ArmArch::Aarch64, emu);
     regs.print_value();
+
+    println!("[addr]> {:#x} ({})", addr, size);
 
     /* #ARCH */
     // change the arch here to disasm for a different arch
     let cs = Capstone::new()
-        .arm()
-        .mode(arch::arm::ArchMode::Thumb)
+        .arm64()
+        .mode(arch::arm64::ArchMode::Arm)
         .detail(true)
         .build()
         .expect("error building capstone object");
