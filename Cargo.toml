@@ -4,6 +4,7 @@ members = [
     "emulator",
     "loader",
     "conf",
+    "hooks",
     "skel",
 ]
 

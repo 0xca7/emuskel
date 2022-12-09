@@ -3,9 +3,6 @@ a skeleton unicorn emulator implementation - used as a template for emulation pr
 
 # TODO
 
-- [ ] implement the emulator and run with ELF + raw code
-- [ ] implement various callbacks so the user can change these to specific needs
-- [ ] implement a configuration file + parser: we want the user to be able to setup memory locations etc. in a config file
-
+- [ ] other architectures etc.
 
 #### 0xca7
