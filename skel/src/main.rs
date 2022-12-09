@@ -1,3 +1,4 @@
+use conf::Config;
 use loader::load_elf_file;
 use emulator::{Emulator, ExecMode};
 
@@ -12,9 +13,11 @@ fn main() {
         }
     }
 
-    let mut emu = Emulator::new();
+    let conf = Config::default();
 
-    emu.init();
+    let mut emu = Emulator::new(&conf);
+
+    emu.init(&conf);
 
     let base = match emu.alloc(0x4000) {
         Ok(addr) => addr,
@@ -23,6 +26,9 @@ fn main() {
             std::process::exit(1);
         }
     };
+
+    // adjust this function to your needs
+    emu.user_setup();
 
     emu.load(base, &code)
         .expect("unable to load code");

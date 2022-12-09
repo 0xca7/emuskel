@@ -271,13 +271,3 @@ pub fn hook_trace(emu: &mut Unicorn<()>, addr: u64, size: u32) {
     }
 
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-
-    }
-}

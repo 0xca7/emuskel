@@ -5,7 +5,7 @@
 #include <string.h>
 
 uint32_t
-rc_crc32(uint32_t crc, const char *buf, size_t len)
+rc_crc32(const char *buf, size_t len)
 {
 	static uint32_t table[256];
 	static int have_table = 0;
@@ -13,6 +13,8 @@ rc_crc32(uint32_t crc, const char *buf, size_t len)
 	uint8_t octet;
 	int i, j;
 	const char *p, *q;
+
+	uint32_t crc = 0xffffffff;
 
 	/* This check is not thread safe; there is no mutex. */
 	if (have_table == 0) {
@@ -43,8 +45,11 @@ rc_crc32(uint32_t crc, const char *buf, size_t len)
 int
 main()
 {
-	const char *s = "The quick brown fox jumps over the lazy dog";
-	printf("%" PRIX32 "\n", rc_crc32(0, s, strlen(s)));
+	uint8_t buffer[4] = {
+		0x61, 0x62, 0x63, 0x64
+	};
+
+	printf("%" PRIX32 "\n", rc_crc32(buffer, 4));
  
 	return 0;
 }

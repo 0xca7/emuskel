@@ -1,5 +1,6 @@
 
 use std::fmt;
+use conf::Config;
 
 /// this is based on the unicorn emulator
 /// and the capstone disassembler - thanks to the folks who coded these :)
@@ -10,21 +11,9 @@ use std::fmt;
 
 use capstone::prelude::*;
 
-use unicorn_engine::{RegisterARM, RegisterARM64};
+use unicorn_engine::RegisterARM64;
 use unicorn_engine::unicorn_const::{Arch, Mode, Permission, SECOND_SCALE};
 
-/// base address of the stack
-const BASE_ADDR_STACK : u64   = 0x0000;
-/// stack starts at 0x4000
-const SIZE_STACK      : usize = 0x1000;
-
-/// base address of the heap
-const BASE_ADDR_HEAP : u64    = 0x2000;
-/// size of the heap
-const SIZE_HEAP      : usize  = 0x1000;
-
-/// allocation base address
-const BASE_ADDR_ALLOC: u64  = 0x10000;
 /// max. possible memory that can be allocated
 const ALLOC_MAX_MEM  : usize = 4 * 1024 * 1024;
 
@@ -63,10 +52,10 @@ struct MemoryManagement {
 impl MemoryManagement {
 
     /// new memory management instance for the emulator
-    pub fn new() -> Self {
+    pub fn new(base: u64) -> Self {
         MemoryManagement { 
             mem_left: ALLOC_MAX_MEM,
-            cur_alloc: BASE_ADDR_ALLOC,
+            cur_alloc: base,
             mem: Vec::new() 
         }
     }
@@ -87,6 +76,21 @@ impl MemoryManagement {
         self.mem_left -= size;
 
         Ok(base_addr)
+    }
+
+    /// allocate `size` bytes at address `addr`
+    pub fn alloc_addr(&mut self, addr: u64, size: usize) -> Result<(), MemoryAllocErr>{
+
+        // check if we can alloc
+        for region in &self.mem {
+            if addr >= region.0 && addr <= region.0 + region.1 as u64 {
+                println!("! error: region at {:#x} already allocated", addr);
+                return Err(MemoryAllocErr::Overlap);
+            }
+        }
+
+        self.mem.push((addr, size));        
+        Ok(())
     }
 
     /// check if an address is in an allocated region
@@ -119,8 +123,9 @@ impl fmt::Display for MemoryManagement {
 }
 
 pub struct Emulator<'a> {
-    /// unicorn emulator instance
-    emu: unicorn_engine::Unicorn<'a, ()>,
+    /// unicorn emulator instance, is public so user can access registers,
+    /// write to memory etc. without requiring an interface in Emulator
+    pub emu: unicorn_engine::Unicorn<'a, ()>,
     /// capstone instance for disassembly
     cs: Capstone,
     /// memory of the emulator
@@ -130,7 +135,7 @@ pub struct Emulator<'a> {
 impl <'a> Emulator<'a> {
 
     /// create a new emulator including a capstone instance
-    pub fn new() -> Self {
+    pub fn new(config: &Config) -> Self {
         Emulator { 
             emu: unicorn_engine::Unicorn::new(
                     Arch::ARM64, 
@@ -142,25 +147,25 @@ impl <'a> Emulator<'a> {
                 .detail(true)
                 .build()
                 .expect("failed to build capstone instance"),
-            mmu: MemoryManagement::new()
+            mmu: MemoryManagement::new(config.base_addr_alloc)
         } // emulator instance
     } // new 
 
     /// initialize the stack, heap etc.
-    pub fn init(&mut self) {
+    pub fn init(&mut self, config: &Config) {
 
         // heap memory
-        self.emu.mem_map(BASE_ADDR_HEAP as u64, 
-            SIZE_HEAP, Permission::ALL)
+        self.emu.mem_map(config.heap_addr,
+            config.heap_size, Permission::ALL)
             .expect("failed to map code page");
 
         // stack memory
-        self.emu.mem_map(BASE_ADDR_STACK as u64, 
-            SIZE_STACK, Permission::ALL)
+        self.emu.mem_map(config.stack_addr as u64, 
+            config.stack_size, Permission::ALL)
             .expect("failed to map code page");
         
         // set the stack pointer
-        let stack_start = BASE_ADDR_STACK + SIZE_STACK as u64;
+        let stack_start = config.stack_addr + config.stack_size as u64;
         self.emu.reg_write(RegisterARM64::SP, stack_start)
             .expect("failed to set stack pointer");
         
@@ -196,6 +201,26 @@ impl <'a> Emulator<'a> {
         }
     } // allocate
 
+    /// attempt to allocate memory at a specific address
+    pub fn alloc_addr(&mut self, addr: u64, size: usize) -> Result<u64, MemoryAllocErr> {
+
+        if self.mmu.alloc_addr(addr, size).is_err() {
+            return Err(MemoryAllocErr::Overlap);
+        }
+
+        let res = self.emu.mem_map(addr, size, 
+            Permission::ALL);
+
+        match res {
+            Ok(()) => Ok(addr),
+            Err(e) => {
+                eprintln!("{:?}\n", e);
+                Err(MemoryAllocErr::UnicornError)
+            }
+        }
+
+    }
+
     pub fn load(&mut self, addr: u64, code: &[u8]) -> Result<(), EmulatorError> {
 
         if !self.mmu.check_load(addr, code.len()) {
@@ -213,6 +238,41 @@ impl <'a> Emulator<'a> {
         }
 
         Ok(())
+    }
+
+    /// adjust to your specific needs
+    pub fn user_setup(&mut self) {
+
+        let data_addr = match self.alloc(0x1000) {
+            Ok(addr) => addr,
+            Err(e) => {
+                eprintln!("{:?}", e);
+                std::process::exit(1);
+            }
+        };
+
+        // target function expects a message and a message length
+        let message = vec![
+            0x61, 0x62, 0x63, 0x64
+        ];
+        let message_len = 4;
+
+        self.emu.mem_write(data_addr, &message)
+            .expect("error writing memory");
+        println!("[emulator]> wrote {:x?} to {:#x}", message, data_addr);
+
+        self.emu.reg_write(RegisterARM64::X0, data_addr)
+            .expect("failed to write X0");
+        println!("[emulator]> wrote {:#x} to X0", data_addr);
+
+        self.emu.reg_write(RegisterARM64::X1, message_len)
+            .expect("failed to write X1");
+        println!("[emulator]> wrote {} to X1", message_len);
+
+        // we need some data at this address
+        self.alloc_addr(0x21000, 0x1000)
+            .expect("failed to allocate at 0x21000");
+
     }
 
     pub fn run(&mut self, start_addr: u64, end_addr: u64, mode: ExecMode) {
@@ -250,7 +310,8 @@ mod tests {
 
     #[test]
     fn single_alloc() {
-        let mut emu = Emulator::new();
+        let conf = Config::default();
+        let mut emu = Emulator::new(&conf);
         let res = emu.alloc(0x1000);
         assert!(res.is_ok());
     }
@@ -258,7 +319,8 @@ mod tests {
     #[test]
     fn print_mmu() {
 
-        let mut emu = Emulator::new();
+        let conf = Config::default();
+        let mut emu = Emulator::new(&conf);
         let res = emu.alloc(0x1000);
         assert!(res.is_ok());
         let res = emu.alloc(0x1000);
@@ -271,8 +333,9 @@ mod tests {
     fn run_emu() {
         let arm_code32 = [0x17, 0x00, 0x40, 0xe2];
 
-        let mut emu = Emulator::new();
-        emu.init();
+        let conf = Config::default();
+        let mut emu = Emulator::new(&conf);
+        emu.init(&conf);
 
         let base = emu.alloc(0x1000);
 
