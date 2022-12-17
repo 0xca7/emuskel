@@ -1,6 +1,8 @@
 # emuskel
 
-a "skeleton" unicorn aarch64 emulator implementation, my template for emulation projects.
+a "skeleton" unicorn aarch64 emulator implementation, my template for emulation projects in Rust.
+
+*see `python3/` for the same thing in python3, mind the top comment at in the source code file for an excellent resource regarding unicorn emulator in python*
 
 This serves as:
 
