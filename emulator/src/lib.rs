@@ -2,7 +2,7 @@
 /// and the capstone disassembler - thanks to the folks who coded these :)
 /// 
 /// 
-/// TODO: implement the heap memory management
+/// TODO: implement heap memory management?
 ///       https://thecandcppclub.com/deepeshmenon/chapter-23-implementing-a-custom-heap/1860/
 
 use std::fmt;
